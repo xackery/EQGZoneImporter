@@ -436,3 +436,6 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 history/
+
+!bin/convert.py
+!bin/gui/*

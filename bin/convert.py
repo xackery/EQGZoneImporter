@@ -1,6 +1,7 @@
 import bpy
 import os
 
+from pprint import pprint
 from bpy.types import ViewLayer
 
 class NpcType:
@@ -64,24 +65,18 @@ def process(o):
             fr.write(o.name.replace(" ", "-") + " " + roundFloatStr(-o.location.y*2) + " " + roundFloatStr(o.location.x*2) + " " + roundFloatStr(o.location.z*2) + " " + roundFloatStr(o.scale.y*2) + " " + roundFloatStr(-o.scale.x*2) + " " + roundFloatStr((o.scale.z)*2) + " " + roundFloatStr(o.get("unknowna", 0)) + " " + roundFloatStr(o.get("unknownb", 0)) + " " + roundFloatStr(o.get("unknownc", 0)) + "\n")
 
 
+print("Step 1) Applying all modifiers...")
 # apply all modifiers
 bpy.ops.object.mode_set(mode = 'OBJECT')
 for o in bpy.data.objects:
+    if not o.modifiers:
+        continue
     bpy.context.view_layer.objects.active = o
     for mod in o.modifiers:
         print("applying modifier " + mod.name + " for " + o.name)
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
-
-
-# delete any objects not seen in viewport
-
-for o in bpy.data.objects:
-    if not o.visible_get(view_layer=bpy.context.view_layer): 
-        print("removing " + o.name + " (not active view)")
-        bpy.data.objects.remove(o, do_unlink=True)
-        continue
-
+print("Step 2) Writing material properties to "+ base_name + "_material.txt...")
 for m in bpy.data.materials:
     fm.write("m " + m.name.replace(" ", "-") + " " + str(m.get("flag", 65536)) + " " + str(m.get("shader", "Opaque_MaxCB1.fx")) + "\n")
     for tree in m.texture_paint_slots:
@@ -101,23 +96,70 @@ for m in bpy.data.materials:
 
 
 exportedMods = []
- #bpy.data.objects[0].asset_data
-for o in bpy.data.objects:
-    if "obj_" in o.name:
-        print(o.name + " found as type " + o.type)
-        mi = o.data
-        print(o.asset_data)
-        if o.library:
-            print("has lib")
 
+print("Step 3) Exporting any linked objects and adding them to "+ base_name + "_mod.txt...")
+for o in bpy.data.objects:
+    if not o.visible_get(view_layer=bpy.context.view_layer):
+        print(o.name + "skipped, it is not visible for export")
+        continue
+    col = o.instance_collection
+    if not col:
+        continue
+    print(o.name +" is linked as "+col.name)
+    for co in col.objects:
+        print(co.name+ " found and processed")
+        process(co)
+        if co.type != 'MESH':
+            bpy.data.objects.remove(co, do_unlink=True)
+    if not col.library:
+        print(col.name +" has no library data, skipping export")
+        continue
+    bpy.ops.object.select_all(action='DESELECT')
+    isExported = False
+    for e in exportedMods:
+        if not e == col.name:
+            continue
+        isExported = True
+        break
+    if not isExported:
+        print(col.name + " is going to be exported from " +col.library.name)
+        exportedMods.append(col.name)
+
+    # write placement data
+    objName = col.library.name.replace(".blend", ".obj")
+    fmod.write(objName + " " + o.name.replace(" ", "-") + " " + roundFloatStr(-o.location.y*2) + " " + roundFloatStr(o.location.x*2) + " " + roundFloatStr(o.location.z*2) + " "  + roundFloatStr(o.rotation_euler.x) + " " + roundFloatStr(o.rotation_euler.y) + " " + roundFloatStr(o.rotation_euler.z) + " " + roundFloatStr(o.scale.z*2) + "\n")
+    if isExported:
+        print(col.name+" is already exported, only adding placement instance data")
+        for co in col.objects:
+            bpy.data.objects.remove(co, do_unlink=True)
+        continue
+    obj_file = os.path.join(directory, objName)
+#        if not isExported:
+#            col.data.select_set(True)
+    for co in col.objects:
+        bpy.context.scene.collection.objects.link(co)
+        bpy.context.view_layer.objects.active = co
+        co.select_set(True)
+    bpy.ops.export_scene.obj(filepath=obj_file, check_existing=True, axis_forward='-X', axis_up='Z', filter_glob="*.obj;*.mtl", use_selection=True, use_animation=False, use_mesh_modifiers=True, use_edges=True, use_smooth_groups=False, use_smooth_groups_bitflags=False, use_normals=True, use_uvs=True, use_materials=True, use_triangles=True, use_nurbs=False, use_vertex_groups=False, use_blen_objects=True, group_by_object=False, group_by_material=False, keep_vertex_order=False, global_scale=2, path_mode='AUTO')
+    bpy.data.objects.remove(o, do_unlink=True)
+    #print(col)
+    #for attr in dir(col):
+    #    print("col.%s = %r" % (attr, getattr(col, attr)))
+
+
+print("Step 4) Removing any invisible objects")
+# delete any objects not seen in viewport
+for o in bpy.data.objects:
+    if not o.visible_get(view_layer=bpy.context.view_layer): 
+        print(o.name + " removed (not active view)")
+        bpy.data.objects.remove(o, do_unlink=True)
+        continue
+
+
+print("Step 5) Processing all normal object properties and generating .sql files")
 bpy.ops.object.select_all(action='DESELECT')
 for o in bpy.data.objects:
-    print(o.name + " found as a type " + o.type)
-    if o.type == 'EMPTY':
-        print("library type?")
-        print(o.users_collection)
-        if o.library:
-            print(o.library)
+    print(o.name + " found as a type " + o.type)    
     process(o)
     if o.type != 'MESH':
         bpy.data.objects.remove(o, do_unlink=True)
@@ -157,5 +199,7 @@ for o in bpy.data.objects:
 
 for sp in spawngroups:
     fsg.write("REPLACE INTO spawngroup (id, name, spawn_limit, dist, max_x, min_x, max_x, min_y, delay, mindelay, despawn, despawn_timer, wp_spawns) VALUES ("+str(spawngroups[sp].id)+", "+str(spawngroups[sp].name)+", "+str(spawngroups[sp].spawn_limit)+", "+str(spawngroups[sp].dist)+", "+str(spawngroups[sp].max_x)+", "+str(spawngroups[sp].min_x)+", "+str(spawngroups[sp].max_x)+", "+str(spawngroups[sp].min_y)+", "+str(spawngroups[sp].delay)+", "+str(spawngroups[sp].mindelay)+", "+str(spawngroups[sp].despawn)+", "+str(spawngroups[sp].despawn_timer)+", "+str(spawngroups[sp].wp_spawns)+");\r\n")
-    
+print("Step 6) Exporting zone .obj")
 bpy.ops.export_scene.obj(filepath=target_file, check_existing=True, axis_forward='-X', axis_up='Z', filter_glob="*.obj;*.mtl", use_selection=False, use_animation=False, use_mesh_modifiers=True, use_edges=True, use_smooth_groups=False, use_smooth_groups_bitflags=False, use_normals=True, use_uvs=True, use_materials=True, use_triangles=True, use_nurbs=False, use_vertex_groups=False, use_blen_objects=True, group_by_object=False, group_by_material=False, keep_vertex_order=False, global_scale=2, path_mode='AUTO')
+
+print("Complete!")

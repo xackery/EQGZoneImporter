@@ -9,7 +9,7 @@ local insert = table.insert
 local pcall = pcall
 
 local function ReadMTL(path)
-	log_write("Attempting to read MTL file from '" .. path .. "'")
+	log_write("readmtl: ".. path ..": parsing")
 	local f = assert(io.open(path, "r"))
 	local out = {}
 	local cur
@@ -21,21 +21,21 @@ local function ReadMTL(path)
 			if cmd == "newmtl" then
 				cur = {}
 				out[args] = cur
-				log_write("Found material '" .. args .. "'")
+				-- log_write("readmtl: Found material '" .. args .. "'")
 			elseif cmd == "map_kd" then
 				local name = args:match("[%w_]+%.%w+")
 				cur.diffuse_map = name
-				log_write("Found diffuse map name '" .. name .. "'")
+				-- log_write("readmtl: Found diffuse map name '" .. name .. "'")
 			elseif cmd == "map_bump" then
 				local name = args:match("[%w_]+%.%w+")
 				cur.e_TextureNormal0 = name
-				log_write("Found normal map name '" .. name .. "'")
+				-- log_write("readmtl: Found normal map name '" .. name .. "'")
 			end
 		end
 	end
 
 	f:close()
-	log_write "Finished reading MTL file"
+	log_write("readmtl: ".. path ..": finished parsing")
 
 	return out
 end
@@ -57,8 +57,11 @@ function Split(s, delimiter)
 end
 
 function obj.Import(path, dir, appending, shortname)
-	log_write("Starting IMPORT from OBJ format from path " .. path)
-	local f = assert(io.open(path, "r"))
+	log_write("obj: " .. path .. ": parsing objects")
+	local f, err = io.open(path, "r")
+	if err then
+		error("open "..path..": "..err)
+	end
 	local fstr = f:read("*a")
 	f:seek("set")
 	local line_count = 0
@@ -66,7 +69,7 @@ function obj.Import(path, dir, appending, shortname)
 		line_count = line_count + 1
 	end
 
-	log_write("Found OBJ file with " .. line_count .. " lines at '" .. path .. "'")
+	log_write("obj: " .. path .. ": parsed " .. line_count .. " lines")
 
 	local materials = {}
 	local vertices = {}
@@ -138,7 +141,7 @@ function obj.Import(path, dir, appending, shortname)
 				end
 			end
 		end
-		log_write("Added " .. #material_flags .. " flags based on " .. shortname .. "_material.txt")
+		log_write("obj: " .. shortname .. "_material.txt: parsed " .. #material_flags .. " flags")
 	end
 
 	local last_material = { flag = 65536, shader = "Opaque_MaxCB1.fx"}
@@ -186,7 +189,7 @@ function obj.Import(path, dir, appending, shortname)
 									if not #entries == 2 then
 										error("expected two values for " .. key .. ", got " .. #entries)
 									end
-									log_write("adding to ".. args .. " ".. key .. " with value " .. entries[2])
+									-- log_write("obj: adding to ".. args .. " ".. key .. " with value " .. entries[2])
 									insert(tbl, {name = key, type = entries[1], value = entries[2]})
 								end
 							end
@@ -197,7 +200,7 @@ function obj.Import(path, dir, appending, shortname)
 					if cur_obj then
 						insert(cur_obj, cur_index)
 					end
-					log_write("Material " .. args .. ": flag=" .. last_material.flag .. ", shader=" .. last_material.shader)
+					-- log_write("obj: Material " .. args .. ": flag=" .. last_material.flag .. ", shader=" .. last_material.shader)
 				elseif cmd == "f" then
 					local v1, v2, v3 = args:match("(%d+/%d*/%d+) (%d+/%d*/%d+) (%d+/%d*/%d+)")
 					if v1 and v2 and v3 then
@@ -236,7 +239,7 @@ function obj.Import(path, dir, appending, shortname)
 					error("expected two values for " .. key .. ", got " .. #entries)
 				end
 				
-				log_write("flags ".. name .. " key "..key..": " .. entries[2])
+				-- log_write("obj: flags ".. name .. " key "..key..": " .. entries[2])
 				if not mat_src[name] then
 					mat_src[name] = {}
 				end
@@ -246,7 +249,7 @@ function obj.Import(path, dir, appending, shortname)
 	end
 
 	f:close()
-	log_write "Finished reading OBJ vertices, normals, texture coordinates and faces"
+	log_write("obj: " .. path .. ": finished parsing objects")
 
 	if cur_obj then
 		cur_obj.to = #triangles
@@ -255,12 +258,13 @@ function obj.Import(path, dir, appending, shortname)
 	data_file:write("\n")
 	data_file:close()
 
-	if mat_src then		
+	log_write("obj: " .. path .. ": parsing materials")	
+	if mat_src then
 		local folder = path:match("^.+[\\/]")
 		if not folder then 
 			folder = "./"
 		end
-		log_write("Searching for texture files to import from directory '" .. folder .. "' (path: " .. path .. ")")
+		log_write("obj " .. path .. ": looking for textures at " .. folder)
 		local append_pos = appending and (#dir + 2) or (#dir + 1)
 		local load_img = function(name)
 			local mat_path = folder .. name
@@ -280,7 +284,7 @@ function obj.Import(path, dir, appending, shortname)
 			local s, err = pcall(eqg.ImportFlippedImage, mat_path, name, dir, pos)
 			if not s then
 				if not util.IsConsole() then error(err) end
-				if util.IsConsole() then log_write("Find file '" .. name .. "' failed with error: " .. err) end
+				if util.IsConsole() then error("obj "..name..": failed to import: " .. err) end
 				return
 			end
 		end
@@ -289,22 +293,22 @@ function obj.Import(path, dir, appending, shortname)
 			--log_write("Searching for images to import for material '" .. mat_name .. "'")
 			local name = mat.diffuse_map
 			if name then
-				log_write("Material " .. mat_name .. " had diffuse map '" .. name .. "' listed")
+				--log_write("obj: Material " .. mat_name .. " had diffuse map '" .. name .. "' listed")
 				load_img(name)
 			end
 			name = mat.e_TextureNormal0
 			if name then
-				log_write("Material " .. mat_name .. " had normal map '" .. name .. "' listed")
+				--log_write("obj: Material " .. mat_name .. " had normal map '" .. name .. "' listed")
 				load_img(name)
 			end
 			name = mat.e_TextureEnvironment0
 			if name then
-				log_write("Material " .. mat_name .. " had environment map '" .. name .. "' listed")
+				--log_write("obj: Material " .. mat_name .. " had environment map '" .. name .. "' listed")
 				load_img(name)
 			end
 			name = mat.e_TextureSecond0
 			if name then
-				log_write("Material " .. mat_name .. " had second diffuse map '" .. name .. "' listed")
+				--log_write("obj: Material " .. mat_name .. " had second diffuse map '" .. name .. "' listed")
 				load_img(name)
 			end
 		end
@@ -315,7 +319,7 @@ function obj.Import(path, dir, appending, shortname)
 		iup.Destroy(progress)
 	end
 
-	log_write "Import from OBJ complete"
+	log_write("obj: " .. path .. ": finished parsing materials")
 
 	return {
 		materials = materials,

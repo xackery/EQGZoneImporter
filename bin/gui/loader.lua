@@ -6,7 +6,15 @@ local by_name
 
 function DirNames(dir)
 	by_name = {}
+	for i, ent in pairs(dir) do
+		if not i == "raw_data" then
+			log_write("parsing pair " .. i)
+			log_write("dir names " .. ent.name)
+		end
+	end
 	for i, ent in ipairs(dir) do
+		log_write("parsing " .. i)
+		log_write("dir names " .. ent.name)
 		ent.pos = i
 		by_name[ent.name] = ent
 	end
@@ -21,12 +29,26 @@ function GetDirPos(name)
 	return #dir + 1
 end
 
-function LoadZone(eqg_path)
-	log_write("Loading zone EQG from '", eqg_path, "'")
+function NewZone(eqg_path)
+	local s, err = pcall(eqg.WriteDirectory, eqg_path, {})
+	if not s then
+		error("failed creating new EQG file: " .. err)
+	end
+
 	local s, data = pcall(eqg.LoadDirectory, eqg_path)
 	if not s then
-		log_write "Could not open zone EQG"
-		return error_popup(data)
+		error("failed to open eqg: "..data)		
+	end
+	open_dir = data
+	by_name = {}
+	return open_dir
+end
+
+function LoadZone(eqg_path)
+	log_write("loadzone "..eqg_path..": loading")
+	local s, data = pcall(eqg.LoadDirectory, eqg_path)
+	if not s then
+		error("failed to open eqg: "..data)		
 	end
 	open_dir = data
 	by_name = {}

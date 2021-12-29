@@ -46,6 +46,15 @@ function obj_import(eqg_path, obj_path)
 	if not shortname then return end
 	shortname = shortname:lower()
 
+
+	-- CREATE NEW EQG
+	log_write("obj_import ".. eqg_path .. ": creating new eqg")
+	local s, err = pcall(eqg.WriteDirectory, eqg_path, {})
+	if not s then
+		error("Error creating new EQG file: " .. err)
+	end
+
+
 	local s, dir = pcall(eqg.LoadDirectory, eqg_path)
 	if not s then
 		error("open eq path " .. eqg_path .. " failed: " .. dir)
@@ -204,8 +213,40 @@ function obj_import(eqg_path, obj_path)
 		-- dir[GetDirPos(modelName .. ".mod")] = data
 	end
 
+	-- ADD MDOELS v2
+	-- for i = 2, #models do
+		-- local modelName = string.gsub(models[i], ".mod", "")
+		-- log_write("obj_import: Attempting to save '" .. modelName .. "' as '" .. modelName .. ".mod")
+-- 		
+		-- local data = obj.Import(modelName .. ".obj", dir, (pos > #dir), shortname)
+		-- data.bones = {}
+		-- data.bone_assignments = {}
+		-- local s, err = pcall(mod.Write, data, modelName .. ".mod", eqg.CalcCRC(modelName))
+		-- if not s then
+			-- error("mod write returned no result")
+		-- end
+		-- dir[GetDirPos(modelName)] = err
+		-- -- TODO: fix dir appending
+		-- -- by_name[modelName .. ".mod"] = pos + 1
+		-- -- dir[GetDirPos(modelName .. ".mod")] = data
+	-- end
 	
-	
+
+	-- ADD MODELS v3
+	-- for i = 1, #models do
+		-- local modelName = models[i]
+		-- if not string.find(modelName, ".ter$") then
+			-- local data = obj.Import(string.gsub(modelName, ".mod", ".obj"), dir, (pos > #dir), modelName)
+			-- data.bones = {}
+			-- data.bone_assignments = {}
+			-- local s, err = pcall(mod.Write, data, modelName, eqg.CalcCRC(modelName))
+			-- if not s then
+				-- error("Error writing model '" .. modelName .. "': " .. data)
+			-- end
+-- 			
+			-- dir[GetDirPos(modelName)] = data
+		-- end
+	-- end
 	log_write("Attempting to save '" .. zon_name .. "' to " .. eqg_path)
 
 	s, data = pcall(zon.Write, zon_data, zon_name, eqg.CalcCRC(zon_name))
